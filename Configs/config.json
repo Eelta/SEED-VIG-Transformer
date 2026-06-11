@@ -1,0 +1,64 @@
+{
+  "sub_num": 23,
+  "val_num": 4,
+  "eeg_ch": 4,
+  "eog_ch": 2,
+  "eeg_len": 1000,
+  "eog_len": 1000,
+  "seq_len": 200,
+  "max_seq_len": 256,
+  "epoch_s1_n": 200,
+  "epoch_s2_n": 20,
+  "num_workers": 8,
+  "coral_weight": 0.001,
+  "n_trials": 100,
+  "batch_size": [
+    64,
+    128,
+    256
+  ],
+  "dim": [
+    32,
+    64,
+    128,
+    256
+  ],
+  "drop_rate": [
+    0.1,
+    0.5
+  ],
+  "p_mask": [
+    0.1,
+    0.5
+  ],
+  "num_heads": [
+    2,
+    4,
+    8,
+    16
+  ],
+  "num_bins": [
+    20,
+    100
+  ],
+  "sigma": [
+    0.5,
+    5.0
+  ],
+  "h_delta": [
+    0.5,
+    3.0
+  ],
+  "lr_s1": [
+    1e-05,
+    0.001
+  ],
+  "lr_s2": [
+    1e-05,
+    0.01
+  ],
+  "weight_decay": [
+    0.0001,
+    0.1
+  ]
+}

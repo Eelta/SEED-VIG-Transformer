@@ -1,0 +1,5 @@
+param,value
+optuna/Total_trials,100.0
+optuna/Completed_trials,17.0
+optuna/Pruned_trials,83.0
+optuna/Best_trial_Val_RMSE,0.2060796984639159
