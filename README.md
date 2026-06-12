@@ -55,8 +55,9 @@ Following the original paper, only 4 forehead electrode sites (4, 5, 6, 7) are s
 
 <img src="Results/Result.png" alt="Result" />
 
-**Thermolysis Experiment Test**
-Due to time and equipment constraints, only a portion of the subjects were tested for a portion of the epochs. The results are as follows:
+**Ablation Study:**
+
+Due to time and hardware constraints, the evaluation was conducted using a subset of subjects and a reduced number of epochs. The results are as follows.
 
 | Exp  | Name             | MAE    | RMSE   | Pearson | CCC    |
 | ---- | ---------------- | ------ | ------ | ------- | ------ |

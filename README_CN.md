@@ -58,8 +58,8 @@ label.npy shape [885, 1]
 
 <img src="Results/Result.png" alt="Result"  />
 
-**消融实验测试**
-受限于时间与设备，仅采用部分受试者进行部分epoch测试，结果如下：
+**消融实验测试：**
+受限于时间与设备，仅采用部分受试者进行部分epoch测试，结果如下。
 
 | Exp  | Name             | MAE    | RMSE   | Pearson | CCC    |
 | ---- | ---------------- | ------ | ------ | ------- | ------ |
