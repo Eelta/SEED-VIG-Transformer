@@ -55,6 +55,21 @@ Following the original paper, only 4 forehead electrode sites (4, 5, 6, 7) are s
 
 <img src="Results/Result.png" alt="Result" />
 
+**Thermolysis Experiment Test**
+Due to time and equipment constraints, only a portion of the subjects were tested for a portion of the epochs. The results are as follows:
+
+| Exp  | Name             | MAE    | RMSE   | Pearson | CCC    |
+| ---- | ---------------- | ------ | ------ | ------- | ------ |
+| 1    | EEG only         | 0.1195 | 0.1524 | 0.7703  | 0.6897 |
+| 2    | EOG only         | 0.1919 | 0.2354 | 0.5888  | 0.3770 |
+| 3    | Reversed attn    | 0.1143 | 0.1508 | 0.7887  | 0.7323 |
+| 4    | Baseline         | 0.1127 | 0.1497 | 0.7947  | 0.7536 |
+| 5    | CORAL            | 0.1135 | 0.1505 | 0.7953  | 0.7522 |
+| 6    | Modality Dropout | 0.1085 | 0.1497 | 0.8039  | 0.7578 |
+| 7    | FDS only         | 0.1027 | 0.1320 | 0.8073  | 0.7897 |
+| 8    | LDS only         | 0.1085 | 0.1370 | 0.7997  | 0.7604 |
+| 9    | Full Model       | 0.0970 | 0.1317 | 0.8094  | 0.7909 |
+
 ## Dependencies
 
 | Library         | Purpose                                          |
@@ -86,4 +101,4 @@ Dataset application page: https://bcmi.sjtu.edu.cn/~seed/seed-vig.html
 
 ### Project Code
 
-Apache-2.0 license — see the [LICENSE](LICENSE) file for details.
+MIT License — see the [LICENSE](LICENSE) file for details.
