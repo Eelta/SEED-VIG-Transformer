@@ -1,7 +1,5 @@
 [中文](./README_CN.md) | **English**
 
-# SEED-VIG Transformer
-
 ## Description
 
 End-to-end Transformer training on the SEED-VIG dataset for vigilance (PERCLOS) regression prediction under strict LOSO (Leave-One-Subject-Out) cross-validation.
@@ -10,79 +8,71 @@ End-to-end Transformer training on the SEED-VIG dataset for vigilance (PERCLOS) 
 
 1. Download the dataset from: https://huggingface.co/datasets/Curryjiang/SEED-VIG
 
-2. Place raw EEG data in: `Raw_Data\mat_data` and EOG data in: `Raw_Data\perclos_labels`
+2. Place raw `.mat` EEG data in `Raw_Data/mat_data` and labels in `Raw_Data/perclos_labels`
 
-3. Run `process.py` to batch-process the data and generate `.npy` files
+3. Run `Raw_Data/p_process.py` for 7-channel forehead EEG/EOG extraction and preprocessing
 
 4. Run `Run.py` for hyperparameter optimization, training, validation, and LOSO evaluation
 
-Configuration parameters can be adjusted in `Configs`.
+Configuration parameters can be adjusted in `Configs/config.json`.
 
 ## Model
 
 1. Depthwise separable convolution (EEG/EOG)
-2. Dynamic gating + modality random dropout
-3. Cross-modal multi-head attention (EEG queries EOG) fusion
+2. Dynamic gate — per-timestep adaptive fusion weight
+3. Cross-modal multi-head attention (EEG queries EOG)
 4. Self-attention with RoPE encoding
-5. FDS (Feature Distribution Smoothing) and LDS (Label Distribution Smoothing) self-calibration
-6. Regression head for prediction
+5. Regression head (MLP)
 
 ## Pipeline
 
-1. Split 23 subjects into 18 for training and 5 for validation; perform hyperparameter search with Optuna (trial=100) — adjust the search range in `Configs\config.json`
+1. Split 23 subjects into training + validation sets; perform hyperparameter search with Optuna (100 trials).
 
-2. Iteratively split 23 subjects into 22 for training and 1 for testing (epoch=1) to perform strict LOSO validation, where:
-
-   - **Stage 1:** Full model training with CORAL covariance alignment loss enabled, epoch=200, early stopping
-   - **Stage 2:** Freeze the backbone, train only the regression head with FDS and LDS self-calibration enabled, epoch=20, early stopping
+2. LOSO evaluation: 22 subjects for training (with 4 held out for validation), 1 subject for testing — repeated for all 23 subjects.
 
 ## Data
 
-- `eeg.npy` shape: [885000, 4]
-- `eog.npy` shape: [885000, 2]
-- `label.npy` shape: [885, 1]
+- `eeg.npy` shape: [885000, 7] — 7 forehead channels
+- `eog.npy` shape: [885000, 2] — VEOf + HEOf
+- `label.npy` shape: [885000, 1] — PERCLOS labels
 
-Following the original paper, only 4 forehead electrode sites (4, 5, 6, 7) are selected, with ch6 inverted. Quality assessment is performed on raw channel data using kurtosis and correlation metrics. Vertical and horizontal EOG features (VEOf/HEOf) are extracted via channel subtraction and independent component analysis (Fast ICA). An adaptive Pearson correlation coefficient threshold identifies and removes EOG artifacts from EEG independent components to reconstruct clean EEG (manual artifact rejection available via `ica.json`). The cleaned EEG and EOG signals undergo band-pass filtering, outlier clipping, and Z-score normalization, while PERCLOS labels are synchronously extracted, yielding an aligned dataset ready for multimodal regression model training.
+All 7 forehead electrode channels are used. The spatial-weight method locks VEO on vertically-aligned electrodes and HEO on horizontally-aligned electrodes (bipolar pattern). An adaptive Pearson correlation threshold identifies and removes EOG artifacts from EEG independent components. Cleaned EEG and EOG signals undergo band-pass filtering, 5σ clipping, and Z-score normalization.
 
 ## Results
 
-| **LOSO Metric** | **Mean** | **SD** | **SEM** | **95% CI Lower** | **95% CI Upper** | **Min** | **Max** |
-| --------------- | -------- | ------ | ------- | ---------------- | ---------------- | ------- | ------- |
-| **MAE**         | 0.1287   | 0.0377 | 0.0079  | 0.1124           | 0.1450           | 0.0700  | 0.2130  |
-| **RMSE**        | 0.1636   | 0.0442 | 0.0092  | 0.1445           | 0.1827           | 0.0890  | 0.2600  |
-| **Pearson**     | 0.6955   | 0.1700 | 0.0354  | 0.6220           | 0.7690           | 0.2340  | 0.9120  |
-| **CCC**         | 0.6515   | 0.1739 | 0.0363  | 0.5763           | 0.7267           | 0.2020  | 0.9000  |
+| **Metric** | **Mean** | **SD** | **SEM** | **95% CI Low** | **95% CI High** | **Min** | **Max** |
+| ---------- | -------- | ------ | ------- | -------------- | --------------- | ------- | ------- |
+| **MAE**    | 0.1315   | 0.0445 | 0.0093  | 0.1122         | 0.1507          | 0.0647  | 0.2283  |
+| **RMSE**   | 0.1655   | 0.0516 | 0.0108  | 0.1432         | 0.1879          | 0.0835  | 0.2706  |
+| **Pearson**| 0.6885   | 0.1687 | 0.0352  | 0.6156         | 0.7615          | 0.3599  | 0.9168  |
+| **CCC**    | 0.6158   | 0.1748 | 0.0365  | 0.5402         | 0.6914          | 0.2563  | 0.9148  |
 
 <img src="Results/Result.png" alt="Result" />
 
 **Ablation Study:**
 
-Due to time and hardware constraints, the evaluation was conducted using a subset of subjects and a reduced number of epochs. The results are as follows.
-
-| Exp  | Name             | MAE    | RMSE   | Pearson | CCC    |
-| ---- | ---------------- | ------ | ------ | ------- | ------ |
-| 1    | EEG only         | 0.1195 | 0.1524 | 0.7703  | 0.6897 |
-| 2    | EOG only         | 0.1919 | 0.2354 | 0.5888  | 0.3770 |
-| 3    | Reversed attn    | 0.1143 | 0.1508 | 0.7887  | 0.7323 |
-| 4    | Baseline         | 0.1127 | 0.1497 | 0.7947  | 0.7536 |
-| 5    | CORAL            | 0.1135 | 0.1505 | 0.7953  | 0.7522 |
-| 6    | Modality Dropout | 0.1085 | 0.1497 | 0.8039  | 0.7578 |
-| 7    | FDS only         | 0.1027 | 0.1320 | 0.8073  | 0.7897 |
-| 8    | LDS only         | 0.1085 | 0.1370 | 0.7997  | 0.7604 |
-| 9    | Full Model       | 0.0970 | 0.1317 | 0.8094  | 0.7909 |
+| # | Experiment | EEG | EOG | Cross-modal | Direction | Gate | MAE | RMSE | Pearson | CCC |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | EEG Only | ✓ | ✗ | ✗ | — | ✗ | 0.1330 | 0.1670 | 0.6733 | 0.6113 |
+| 2 | EOG Only | ✗ | ✓ | ✗ | — | ✗ | 0.1852 | 0.2240 | 0.5886 | 0.4495 |
+| 3 | Concat | ✓ | ✓ | ✗ | — | ✗ | 0.1364 | 0.1701 | 0.6772 | 0.5989 |
+| 4 | Attn Forward | ✓ | ✓ | ✓ | EEG→EOG | ✗ | 0.1369 | 0.1698 | 0.6892 | 0.6197 |
+| 5 | Attn Reversed | ✓ | ✓ | ✓ | EOG→EEG | ✗ | 0.1349 | 0.1701 | 0.6921 | 0.6142 |
+| 6 | Attn Reversed Gate | ✓ | ✓ | ✓ | EOG→EEG | ✓ | 0.1370 | 0.1712 | 0.6720 | 0.5913 |
+| 7 | Full | ✓ | ✓ | ✓ | EEG→EOG | ✓ | 0.1315 | 0.1655 | 0.6885 | 0.6158 |
 
 ## Dependencies
 
-| Library         | Purpose                                          |
-| --------------- | ------------------------------------------------ |
-| `numpy`         | Numerical computation                            |
-| `scipy`         | .mat file loading, kurtosis/correlation analysis |
-| `pandas`        | CSV result export                                |
-| `mne`           | EEG processing (filtering, ICA fitting/reconstruction) |
-| `scikit-learn`  | Regression metrics (MAE/RMSE) and FastICA         |
-| `torch`         | Model definition and training                    |
-| `safetensors`   | Safe model weight serialization                  |
-| `optuna`        | Hyperparameter search                            |
+| Library | Purpose |
+|---|---|
+| `numpy` | Numerical computation |
+| `scipy` | .mat file loading, kurtosis/correlation statistics |
+| `pandas` | CSV result export |
+| `mne` | EEG processing (filtering, ICA fitting and reconstruction) |
+| `scikit-learn` | Regression metrics (MAE/RMSE) and FastICA |
+| `torch` | Model definition and training |
+| `safetensors` | Safe model weight serialization |
+| `optuna` | Hyperparameter search |
 
 Installation:
 
@@ -94,7 +84,7 @@ pip install numpy scipy pandas mne scikit-learn torch safetensors optuna
 
 ### Dataset
 
-The SEED-VIG dataset is copyrighted by the BCMI Laboratory, Shanghai Jiao Tong University, and is limited to **non-commercial research purposes only**. When using this dataset, please cite the following paper:
+The SEED-VIG dataset is copyrighted by the BCMI Laboratory, Shanghai Jiao Tong University, and is limited to **non-commercial research purposes only**. When using this dataset, please cite:
 
 > Wei-Long Zheng and Bao-Liang Lu, *A multimodal approach to estimating vigilance using EEG and forehead EOG*, Journal of Neural Engineering, 14(2): 026017, 2017.
 
@@ -102,4 +92,4 @@ Dataset application page: https://bcmi.sjtu.edu.cn/~seed/seed-vig.html
 
 ### Project Code
 
-MIT License — see the [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](LICENSE) file.

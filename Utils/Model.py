@@ -1,7 +1,6 @@
 from torch import nn
 import torch
 from .Attention_RoPE import Attention
-from .LDS_FDS import FDS
 
 
 # 卷积块EEGNet：深度可分离时间-空间解耦卷积
@@ -34,58 +33,51 @@ class ConvBlock(nn.Module):
 
 # Backbone模块
 class Backbone(nn.Module):
-    def __init__(self, eeg_ch, eog_ch, eeg_len, eog_len, seq_len, dim, drop_rate, p_mask, num_heads, max_seq_len):
+    def __init__(self, eeg_ch, eog_ch, eeg_len, eog_len, seq_len, dim, drop_rate, num_heads, max_seq_len):
         super().__init__()
         # 卷积特征提取
         self.conv_eeg = ConvBlock(eeg_ch, eeg_len, seq_len, dim, drop_rate)  # (B, dim, seq_len)
         self.conv_eog = ConvBlock(eog_ch, eog_len, seq_len, dim, drop_rate)  # (B, dim, seq_len)
 
-        # 动态门控：根据输入特征自适应决定 EEG-EOG 融合比例
+        # 动态门控
         self.gate_mlp = nn.Sequential(
             nn.Linear(dim * 2, dim // 4),
             nn.ELU(),
             nn.Linear(dim // 4, 1),
             nn.Sigmoid()
         )
-        self.p_mask = p_mask
 
-        # 归一化与注意力机制
-        self.layer_norm = nn.LayerNorm(dim)
-        self.mha = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, batch_first=True)
-        self.attention = Attention(dim=dim, n_heads=num_heads, max_seq_len=max_seq_len)
+        # Pre-LN：每个注意力子层前独立归一化
+        self.ln_eeg = nn.LayerNorm(dim)
+        self.ln_eog = nn.LayerNorm(dim)
+        self.ln_attn = nn.LayerNorm(dim)
+        # 最终归一化
+        self.ln_final = nn.LayerNorm(dim)
+
+        # 交叉注意力、自注意力机制
+        self.cross_attn = Attention(dim=dim, n_heads=num_heads, max_seq_len=max_seq_len)
+        self.self_attn = Attention(dim=dim, n_heads=num_heads, max_seq_len=max_seq_len)
 
     def forward(self, eeg, eog):
         # 1. 维度变换与卷积，[B, seq_len, dim]
         eeg = self.conv_eeg(eeg.permute(0, 2, 1)).permute(0, 2, 1)
         eog = self.conv_eog(eog.permute(0, 2, 1)).permute(0, 2, 1)
 
-        # 2. 动态门控：池化 → 拼接 → MLP → 逐样本融合权重
-        eeg_pool = eeg.mean(dim=1)  # [B, dim]
-        eog_pool = eog.mean(dim=1)  # [B, dim]
-        alpha = self.gate_mlp(torch.cat([eeg_pool, eog_pool], dim=-1))  # [B, 1]
+        # 2. 动态门控：时间步级融合权重，[B, seq_len, 1]
+        alpha = self.gate_mlp(torch.cat([eeg, eog], dim=-1))
 
-        # 3. 跨模态注意力（EEG 查询 EOG）+ 模态随机丢弃
-        B, seq_len, dim = eeg.shape
-        cross_out = torch.zeros_like(eeg)
+        # 3. 跨模态注意力 (Pre-LN + 残差)
+        eeg_norm = self.ln_eeg(eeg)
+        eog_norm = self.ln_eog(eog)
+        cross_out = self.cross_attn(query=eeg_norm, key=eog_norm, value=eog_norm)
+        eeg = eeg + alpha * cross_out  # [B, seq_len, dim]
 
-        if self.training and self.p_mask > 0.0:
-            keep_mask = torch.rand(B, device=eeg.device) > self.p_mask
-            if keep_mask.any():
-                eeg_sub = eeg[keep_mask]
-                eog_sub = eog[keep_mask]
-                sub_cross_out, _ = self.mha(query=eeg_sub, key=eog_sub, value=eog_sub)  # [B, seq_len, dim]
-                # 使部分eog融合eeg，其余直接舍弃
-                cross_out[keep_mask] = sub_cross_out
-        else:
-            cross_out, _ = self.mha(query=eeg, key=eog, value=eog)
+        # 4. 自注意力 (Pre-LN + 残差)
+        attn_in = self.ln_attn(eeg)
+        eeg = eeg + self.self_attn(attn_in, attn_in, attn_in)  # [B, seq_len, dim]
 
-        # 4. 逐样本自适应融合
-        eeg_fused = self.layer_norm(eeg + alpha.unsqueeze(-1) * cross_out)  # [B, seq_len, dim]
-
-        # 5. 自注意力
-        eeg_out = self.attention(eeg_fused)  # [B, seq_len, dim]
-
-        # 6. 全局平均池化，输出最终特征
+        # 5. 全局平均池化，输出最终特征
+        eeg_out = self.ln_final(eeg)  # 最终归一化
         pooled_out = eeg_out.mean(dim=1)  # [B, dim]
         return pooled_out
 
@@ -100,38 +92,25 @@ class Net(nn.Module):
                  seq_len,
                  dim,
                  drop_rate,
-                 p_mask,
                  num_heads,
-                 max_seq_len,
-                 num_bins,
-                 sigma):
+                 max_seq_len):
         super().__init__()
 
-        # 冻结/解冻的最小单元
         self.backbone = Backbone(
             eeg_ch, eog_ch, eeg_len, eog_len, seq_len, dim,
-            drop_rate, p_mask, num_heads, max_seq_len
+            drop_rate, num_heads, max_seq_len
         )
-
-        self.fds = FDS(feature_dim=dim, num_bins=num_bins, sigma=sigma)
 
         # 回归头
         self.reg_head = nn.Sequential(
             nn.Linear(dim, dim // 2),
-            nn.BatchNorm1d(dim // 2),
             nn.ReLU(),
             nn.Dropout(drop_rate),
             nn.Linear(dim // 2, dim // 4),
-            nn.BatchNorm1d(dim // 4),
             nn.ReLU(),
             nn.Linear(dim // 4, 1),
         )
 
-    def forward(self, eeg, eog, targets=None, bin_edges=None):
-        # 提取高维特征
+    def forward(self, eeg, eog):
         features = self.backbone(eeg, eog)  # [B, dim]
-        # 经 FDS 模块（内部根据需要决定是否校准）
-        calibrated_features = self.fds(features, targets, bin_edges)
-        # 回归预测
-        result = self.reg_head(calibrated_features)  # [B, 1]
-        return result
+        return self.reg_head(features)       # [B, 1]
