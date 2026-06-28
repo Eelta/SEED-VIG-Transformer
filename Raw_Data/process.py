@@ -163,7 +163,6 @@ def process_subject(mat_path):
 
     info = mne.create_info(ch_names=ch_names_eeg, sfreq=125, ch_types='eeg')
     raw = mne.io.RawArray(X_eeg, info, verbose=False)
-    # 1.0Hz 契合论文 2.3.4 节实验参数
     raw.filter(l_freq=1.0, h_freq=None, fir_design='firwin',
                skip_by_annotation='edge', verbose=False)
 
@@ -205,7 +204,6 @@ def process_subject(mat_path):
 
     eog_ic_idx, auto_thr = _auto_threshold(eog_scores)
 
-    # 如果 ica.json 存在且 ica_auto=0，则使用文件中指定的 exclude 列表
     ica_auto = True
     if _ica_config is not None:
         ica_auto = _ica_config.get('ica_auto', 1) == 1
